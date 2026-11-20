@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab 01 - Microservices</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 720px; margin: 30px auto; padding: 0 16px; color: #222; }
+        section { border: 1px solid #ddd; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+        h2 { margin-top: 0; font-size: 1.2rem; }
+        button { padding: 7px 12px; border: none; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        button.danger { background: #dc2626; }
+        button.danger:hover { background: #b91c1c; }
+        input { padding: 7px 10px; margin: 4px 8px 4px 0; border: 1px solid #bbb; border-radius: 4px; }
+        ul { padding-left: 0; list-style: none; }
+        li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; }
+        pre { background: #f5f5f5; padding: 12px; border-radius: 6px; min-height: 40px; white-space: pre-wrap; }
+        .msg { font-size: 0.9rem; color: #555; margin-top: 8px; min-height: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Lab 01 - Product & Order Service</h1>
+
+    <section>
+        <h2>Danh sách sản phẩm</h2>
+        <button onclick="loadProducts()">Tải danh sách sản phẩm</button>
+        <ul id="productList"></ul>
+    </section>
+
+    <section>
+        <h2>Tìm kiếm sản phẩm theo tên</h2>
+        <input type="text" id="searchName" placeholder="Nhập tên sản phẩm">
+        <button onclick="searchProducts()">Tìm kiếm</button>
+    </section>
+
+    <section>
+        <h2>Tìm sản phẩm thông qua Order Service</h2>
+        <input type="number" id="productId" placeholder="Nhập ID sản phẩm" min="1">
+        <button onclick="findProduct()">Tìm sản phẩm</button>
+        <pre id="result">.......</pre>
+    </section>
+
+    <section>
+        <h2>Thêm sản phẩm</h2>
+        <input type="text" id="newName" placeholder="Tên sản phẩm">
+        <input type="number" id="newPrice" placeholder="Giá" min="0">
+        <button onclick="addProduct()">Thêm sản phẩm</button>
+        <div class="msg" id="addMessage"></div>
+    </section>
+
+    <script>
+        const PRODUCT_API = "http://localhost:8081/api/products";
+        const ORDER_API = "http://localhost:8082/api/orders";
+
+        // Hiển thị danh sách sản phẩm kèm nút xóa
+        function renderProducts(products, emptyText) {
+            const list = document.getElementById("productList");
+            list.innerHTML = "";
+            if (products.length === 0) {
+                list.textContent = emptyText;
+                return;
+            }
+            products.forEach(product => {
+                const li = document.createElement("li");
+                const span = document.createElement("span");
+                span.textContent = `${product.id} - ${product.name} - ${product.price} đ`;
+
+                const btn = document.createElement("button");
+                btn.className = "danger";
+                btn.textContent = "Xóa";
+                btn.onclick = () => deleteProduct(product.id, product.name);
+
+                li.appendChild(span);
+                li.appendChild(btn);
+                list.appendChild(li);
+            });
+        }
+
+        // Gọi API lấy danh sách sản phẩm từ Product Service
+        async function loadProducts() {
+            const list = document.getElementById("productList");
+            try {
+                const response = await fetch(PRODUCT_API);
+                if (!response.ok) {
+                    throw new Error("Không thể tải danh sách sản phẩm");
+                }
+                const products = await response.json();
+                renderProducts(products, "Chưa có sản phẩm");
+            } catch (error) {
+                list.textContent = "Lỗi: " + error.message;
+            }
+        }
+
+        // Tìm kiếm sản phẩm theo tên
+        async function searchProducts() {
+            const keyword = document.getElementById("searchName").value.trim();
+            const list = document.getElementById("productList");
+            try {
+                const response = await fetch(`${PRODUCT_API}/search?name=${encodeURIComponent(keyword)}`);
+                if (!response.ok) {
+                    throw new Error("Không thể tìm kiếm sản phẩm");
+                }
+                const products = await response.json();
+                renderProducts(products, "Không tìm thấy sản phẩm phù hợp");
+            } catch (error) {
+                list.textContent = "Lỗi: " + error.message;
+            }
+        }
+
+        // Tìm sản phẩm theo ID thông qua Order Service
+        async function findProduct() {
+            const id = document.getElementById("productId").value;
+            const result = document.getElementById("result");
+
+            if (!id || !Number.isInteger(Number(id)) || Number(id) < 1) {
+                result.textContent = "Vui lòng nhập ID hợp lệ";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${ORDER_API}/product/${id}`);
+                if (response.status === 404) {
+                    result.textContent = "Không tìm thấy sản phẩm";
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error("Không thể lấy thông tin sản phẩm");
+                }
+                const product = await response.json();
+                result.textContent = JSON.stringify(product, null, 2);
+            } catch (error) {
+                result.textContent = "Lỗi: " + error.message;
+            }
+        }
+
+        // Thêm sản phẩm mới bằng POST
+        async function addProduct() {
+            const name = document.getElementById("newName").value.trim();
+            const raw = document.getElementById("newPrice").value;
+            const msg = document.getElementById("addMessage");
+
+            if (!name || raw === "" || !Number.isInteger(Number(raw)) || Number(raw) < 0) {
+                msg.textContent = "Vui lòng nhập tên và giá hợp lệ";
+                return;
+            }
+
+            try {
+                const response = await fetch(PRODUCT_API, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: name, price: Number(raw) })
+                });
+                if (!response.ok) {
+                    throw new Error("Không thể thêm sản phẩm");
+                }
+                msg.textContent = "Đã thêm sản phẩm: " + name;
+                document.getElementById("newName").value = "";
+                document.getElementById("newPrice").value = "";
+                loadProducts();
+            } catch (error) {
+                msg.textContent = "Lỗi: " + error.message;
+            }
+        }
+
+        // Xóa sản phẩm bằng DELETE
+        async function deleteProduct(id, name) {
+            if (!confirm(`Xóa sản phẩm "${name}" (ID ${id})?`)) return;
+            try {
+                const response = await fetch(`${PRODUCT_API}/${id}`, { method: "DELETE" });
+                if (response.status === 404) {
+                    throw new Error("Sản phẩm không tồn tại");
+                }
+                if (!response.ok) {
+                    throw new Error("Không thể xóa sản phẩm");
+                }
+                loadProducts();
+            } catch (error) {
+                alert("Lỗi: " + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
